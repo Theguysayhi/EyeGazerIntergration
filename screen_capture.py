@@ -1,6 +1,7 @@
 """
 screen_capture.py
-Captures a fixed-size region of the screen centred on gaze coordinates.
+Captures screen regions – either a floating crop centred on a gaze point,
+or a fixed segment rectangle from the grid defined in segment_map.py.
 """
 
 from __future__ import annotations
@@ -84,6 +85,51 @@ def capture_region(
         "top":    top,
         "width":  right - left,
         "height": bottom - top,
+    }
+
+    with mss.mss() as sct:
+        raw = sct.grab(monitor)
+        img = Image.frombytes("RGB", raw.size, bytes(raw.raw), "raw", "BGRX")
+
+    return img
+
+
+def capture_fullscreen() -> Image.Image:
+    """
+    Capture the entire primary monitor.
+
+    Returns
+    -------
+    PIL.Image.Image
+        The full screen as an RGB image.
+    """
+    mon = _get_primary_monitor()
+    with mss.mss() as sct:
+        raw = sct.grab(mon)
+        img = Image.frombytes("RGB", raw.size, bytes(raw.raw), "raw", "BGRX")
+    return img
+
+
+def capture_segment(segment) -> Image.Image:
+    """
+    Capture the exact bounding rectangle of a Segment object.
+
+    Parameters
+    ----------
+    segment : Segment
+        A Segment instance from segment_map.py.  Only the .left/.top/.width/.height
+        attributes are used, so duck-typing is fine.
+
+    Returns
+    -------
+    PIL.Image.Image
+        The captured segment as an RGB image.
+    """
+    monitor = {
+        "left":   segment.left,
+        "top":    segment.top,
+        "width":  segment.width,
+        "height": segment.height,
     }
 
     with mss.mss() as sct:
