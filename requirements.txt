@@ -1,0 +1,6 @@
+# eyeware-beam is NOT on PyPI.
+# Install it manually from the Beam SDK — see README.md for instructions.
+# eyeware-beam
+
+mss
+Pillow

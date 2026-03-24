@@ -1,0 +1,93 @@
+"""
+screen_capture.py
+Captures a fixed-size region of the screen centred on gaze coordinates.
+"""
+
+from __future__ import annotations
+
+import mss
+import mss.tools
+from PIL import Image
+
+# Size of the capture region in pixels
+CAPTURE_SIZE = 400  # 400 x 400
+
+
+def _get_primary_monitor() -> dict:
+    """Return the mss monitor dict for the primary display."""
+    with mss.mss() as sct:
+        # monitors[0] = full virtual screen (all monitors combined)
+        # monitors[1] = primary monitor
+        return dict(sct.monitors[1])
+
+
+def capture_region(
+    gaze_x: int,
+    gaze_y: int,
+    screen_width: int = 0,
+    screen_height: int = 0,
+) -> Image.Image:
+    """
+    Capture a CAPTURE_SIZE x CAPTURE_SIZE region centred on (gaze_x, gaze_y).
+
+    The region is clamped so it never exceeds the screen boundaries.
+
+    Parameters
+    ----------
+    gaze_x, gaze_y : int
+        Screen-space gaze coordinates (may be slightly outside screen bounds).
+    screen_width, screen_height : int, optional
+        Full screen dimensions used for clamping.
+        If 0 (default), the primary monitor size is detected automatically via mss.
+
+    Returns
+    -------
+    PIL.Image.Image
+        The captured region as an RGB image.
+    """
+    # Auto-detect screen dimensions if not provided
+    if screen_width <= 0 or screen_height <= 0:
+        mon = _get_primary_monitor()
+        screen_width  = mon["width"]
+        screen_height = mon["height"]
+
+    # Clamp gaze point to valid screen range first
+    gaze_x = max(0, min(screen_width  - 1, gaze_x))
+    gaze_y = max(0, min(screen_height - 1, gaze_y))
+
+    half = CAPTURE_SIZE // 2
+
+    # Initial region centred on gaze
+    left   = gaze_x - half
+    top    = gaze_y - half
+    right  = left + CAPTURE_SIZE
+    bottom = top  + CAPTURE_SIZE
+
+    # Shift the window if it overflows the right / bottom edge
+    if right > screen_width:
+        left  = screen_width - CAPTURE_SIZE
+        right = screen_width
+    if bottom > screen_height:
+        top    = screen_height - CAPTURE_SIZE
+        bottom = screen_height
+
+    # Clamp to left / top edge (handles screens smaller than CAPTURE_SIZE)
+    left = max(0, left)
+    top  = max(0, top)
+
+    # Recompute right/bottom from the final anchored left/top
+    right  = min(screen_width,  left + CAPTURE_SIZE)
+    bottom = min(screen_height, top  + CAPTURE_SIZE)
+
+    monitor = {
+        "left":   left,
+        "top":    top,
+        "width":  right - left,
+        "height": bottom - top,
+    }
+
+    with mss.mss() as sct:
+        raw = sct.grab(monitor)
+        img = Image.frombytes("RGB", raw.size, bytes(raw.raw), "raw", "BGRX")
+
+    return img
