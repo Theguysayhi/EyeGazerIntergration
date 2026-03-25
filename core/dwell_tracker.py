@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 
-from segment_map import Segment
+from .segment_map import Segment
 
 
 class DwellTracker:
@@ -59,8 +59,6 @@ class DwellTracker:
         self._last_fired[key] = now
         self._just_fired_seg  = segment
         fired = True
-
-        print(f"[dwell] Dwell confirmed on {segment.name}")
 
         return fired
 

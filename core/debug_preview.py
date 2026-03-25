@@ -15,8 +15,8 @@ import tkinter as tk
 
 from PIL import ImageDraw, ImageTk
 
-from gaze_tracker import SCREEN_WIDTH, SCREEN_HEIGHT
-from segment_map import SegmentMap, Segment
+from .gaze_tracker import SCREEN_WIDTH, SCREEN_HEIGHT
+from .segment_map import SegmentMap, Segment
 
 # Scale factor: preview is rendered at this fraction of the raw capture size.
 PREVIEW_SCALE = 0.45
@@ -97,7 +97,20 @@ class DebugPreview:
                 draw.text((cx - 10, cy - 6), seg.name.replace("segment_", ""),
                           fill=(200, 200, 200, 200))
 
-            # Active segment highlight
+            # AI capture area: union of the 3×3 neighbourhood (blue tint)
+            neighbours = self._seg_map.get_neighbours(active_seg, radius=1)
+            nb_col_min = min(s.col for s in neighbours)
+            nb_col_max = max(s.col for s in neighbours)
+            nb_row_min = min(s.row for s in neighbours)
+            nb_row_max = max(s.row for s in neighbours)
+            nx0 = nb_col_min * cell_w
+            ny0 = nb_row_min * cell_h
+            nx1 = (nb_col_max + 1) * cell_w
+            ny1 = (nb_row_max + 1) * cell_h
+            draw.rectangle([(nx0, ny0), (nx1, ny1)], fill=(80, 180, 255, 30))
+            draw.rectangle([(nx0, ny0), (nx1, ny1)], outline=(80, 180, 255, 200), width=2)
+
+            # Active segment highlight (yellow, drawn on top of the blue area)
             ax0 = active_seg.col * cell_w
             ay0 = active_seg.row * cell_h
             ax1, ay1 = ax0 + cell_w, ay0 + cell_h

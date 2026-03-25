@@ -71,7 +71,6 @@ class GazeLogger:
             image=image,
         )
         self._log.append(entry)
-        print(entry.summary())
         return entry
 
     # ------------------------------------------------------------------

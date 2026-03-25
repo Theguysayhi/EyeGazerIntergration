@@ -3,7 +3,7 @@ main.py
 Entry point for the Beam Eye Tracker gaze capture application.
 
 Run:
-    b
+    py -3.10 main.py
 
 Press Ctrl+C to stop.
 
@@ -27,17 +27,19 @@ import os
 import queue
 import signal
 import threading
+import time
 
 import eyeware.beam_eye_tracker as bet
 
-from gaze_tracker import GazeTracker, SCREEN_WIDTH, SCREEN_HEIGHT
-from screen_capture import capture_fullscreen, capture_segment
-from segment_map import SegmentMap
-from logger import GazeLogger
-from dwell_tracker import DwellTracker
-from nsfw_consumer import NSFWConsumer
-from ai_capture_thread import AICaptureThread
-from debug_preview import DebugPreview
+from core.gaze_tracker import GazeTracker, SCREEN_WIDTH, SCREEN_HEIGHT
+from core.screen_capture import capture_fullscreen, capture_segment
+from core.segment_map import SegmentMap
+from core.logger import GazeLogger
+from core.dwell_tracker import DwellTracker
+from core.nsfw_consumer import NSFWConsumer
+from core.ai_capture_thread import AICaptureThread
+from core.debug_preview import DebugPreview
+from core.buttplug.controller import ButtplugController
 
 # ---------------------------------------------------------------------------
 # Config
@@ -57,10 +59,17 @@ CAPTURE_INTERVAL_S: float = _cfg.getfloat("ai",    "capture_interval_s", fallbac
 NSFW_MODEL:               str   = _cfg.get(     "nsfw", "model",                  fallback="AdamCodd/vit-base-nsfw-detector").strip()
 NSFW_LABELS:              list  = [l.strip() for l in _cfg.get("nsfw", "nsfw_labels", fallback="nsfw").split(",")]
 NSFW_THRESHOLD:           float = _cfg.getfloat("nsfw", "threshold",              fallback=0.65)
-NSFW_COOLDOWN_S:          float = _cfg.getfloat("nsfw", "cooldown_s",             fallback=30.0)
 NSFW_COMMAND:             str   = _cfg.get(     "nsfw", "command",                fallback="").strip()
 NSFW_MONO_COLOUR_THRESH:  float = _cfg.getfloat("nsfw", "mono_colour_threshold",  fallback=0.70)
 NSFW_PIXEL_DIFF_THRESH:   float = _cfg.getfloat("nsfw", "pixel_diff_threshold",   fallback=0.60)
+
+BUTTPLUG_ENABLED:      bool  = _cfg.getboolean("buttplug", "enabled",       fallback=True)
+BUTTPLUG_SERVER_URL:   str   = _cfg.get(       "buttplug", "server_url",    fallback="ws://127.0.0.1:12345").strip()
+BUTTPLUG_SCRIPTS_DIR:  str   = os.path.join(
+    os.path.dirname(_CONFIG_PATH),
+    _cfg.get("buttplug", "scripts_dir", fallback="scripts").strip(),
+)
+BUTTPLUG_STARTER_LOOPS: int  = _cfg.getint(    "buttplug", "starter_loops", fallback=1)
 
 # ---------------------------------------------------------------------------
 # Graceful shutdown
@@ -109,7 +118,6 @@ def main() -> None:
             model=NSFW_MODEL,
             labels=NSFW_LABELS,
             threshold=NSFW_THRESHOLD,
-            cooldown_s=NSFW_COOLDOWN_S,
             command=NSFW_COMMAND,
             mono_colour_threshold=NSFW_MONO_COLOUR_THRESH,
             pixel_diff_threshold=NSFW_PIXEL_DIFF_THRESH,
@@ -122,8 +130,30 @@ def main() -> None:
             interval_s=CAPTURE_INTERVAL_S,
             ai_queue=ai_queue,
             nsfw_consumer=nsfw_consumer,
+            segment_map=seg_map,
         )
         ai_capture_thread.start()
+
+    # -------------------------------------------------------------------
+    # Buttplug / Intiface Central controller
+    # -------------------------------------------------------------------
+    buttplug_ctrl: ButtplugController | None = None
+    if BUTTPLUG_ENABLED:
+        print(f"[main] Buttplug enabled — server: {BUTTPLUG_SERVER_URL}  "
+              f"scripts: {BUTTPLUG_SCRIPTS_DIR}")
+        buttplug_ctrl = ButtplugController(
+            server_url=BUTTPLUG_SERVER_URL,
+            scripts_dir=BUTTPLUG_SCRIPTS_DIR,
+            starter_loops=BUTTPLUG_STARTER_LOOPS,
+        )
+        if nsfw_consumer is not None:
+            nsfw_consumer.set_callbacks(
+                on_nsfw=buttplug_ctrl.on_nsfw,
+                on_sfw=buttplug_ctrl.on_sfw,
+            )
+        buttplug_ctrl.start()
+    else:
+        print("[main] Buttplug disabled (set [buttplug] enabled = true to enable)")
 
     preview: DebugPreview | None = DebugPreview(seg_map) if DEBUG_PREVIEW else None
 
@@ -137,8 +167,49 @@ def main() -> None:
         last_preview_image = None
         last_active_seg    = seg_map.get_segment(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
 
+        # -------------------------------------------------------------------
+        # SFW dwell state — used to delay the pause command so that brief
+        # SFW flickers (e.g. tab-switching) don't interrupt playback.
+        # Dwell_ms controls how long content must stay SFW before we pause.
+        # NSFW is handled immediately by the on_nsfw_cb in NSFWConsumer.
+        # -------------------------------------------------------------------
+        _prev_nsfw_active: bool       = False
+        _sfw_since:        float | None = None   # monotonic timestamp
+        _sfw_pause_fired:  bool       = False    # fire only once per SFW window
+
         while _running:
             result = tracker.poll(timeout_ms=POLL_TIMEOUT_MS)
+
+            # -----------------------------------------------------------------
+            # SFW dwell check — runs every poll cycle regardless of gaze data.
+            # When content transitions NSFW→SFW we start a timer.  Only after
+            # DWELL_MS of sustained SFW do we call on_sfw() to pause playback.
+            # If content flips back to NSFW the timer resets automatically.
+            # -----------------------------------------------------------------
+            if nsfw_consumer is not None and buttplug_ctrl is not None:
+                currently_nsfw = nsfw_consumer.nsfw_active
+                if currently_nsfw != _prev_nsfw_active:
+                    if currently_nsfw:
+                        # Flipped to NSFW — reset SFW dwell timer.
+                        # on_nsfw_cb already fired immediately inside NSFWConsumer.
+                        _sfw_since       = None
+                        _sfw_pause_fired = False
+                    else:
+                        # Flipped to SFW — start the dwell timer.
+                        _sfw_since       = time.monotonic()
+                        _sfw_pause_fired = False
+                    _prev_nsfw_active = currently_nsfw
+
+                # Pause once DWELL_MS of sustained SFW has elapsed.
+                if (
+                    not currently_nsfw
+                    and _sfw_since is not None
+                    and not _sfw_pause_fired
+                    and (time.monotonic() - _sfw_since) * 1000 >= DWELL_MS
+                ):
+                    _sfw_pause_fired = True
+                    print(f"[main] SFW dwell {DWELL_MS} ms reached — pausing playback")
+                    buttplug_ctrl.on_sfw()
 
             if result is None:
                 status = tracker.status()
@@ -175,6 +246,8 @@ def main() -> None:
                                dwell.dwell_progress(), fired_seg,
                                nsfw_result=nsfw_res)
 
+    if buttplug_ctrl is not None:
+        buttplug_ctrl.stop()
     if ai_capture_thread is not None:
         ai_capture_thread.stop()
     print("[main] Done.")

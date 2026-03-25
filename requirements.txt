@@ -1,3 +1,6 @@
+# Buttplug.io Python client (requires Intiface Central to be running)
+buttplug-py
+
 # eyeware-beam is NOT on PyPI.
 # Install it manually from the Beam SDK — see README.md for instructions.
 # eyeware-beam

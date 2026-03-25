@@ -8,18 +8,13 @@ Configuration is read from config.ini at import time.
 
 from __future__ import annotations
 
-import configparser
-import os
 from dataclasses import dataclass, field
+
+from .config import cfg as _cfg
 
 # ---------------------------------------------------------------------------
 # Config loading
 # ---------------------------------------------------------------------------
-
-_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.ini")
-
-_cfg = configparser.ConfigParser(inline_comment_prefixes=(";",))
-_cfg.read(_CONFIG_PATH)
 
 GRID_COLUMNS: int = _cfg.getint("grid", "columns", fallback=3)
 GRID_ROWS: int    = _cfg.getint("grid", "rows",    fallback=3)
@@ -161,6 +156,33 @@ class SegmentMap:
     def all_segments(self) -> list[Segment]:
         """Return a flat list of all segments in row-major order."""
         return [seg for row in self._segments for seg in row]
+
+    # ------------------------------------------------------------------
+    def get_neighbours(self, seg: Segment, radius: int = 1) -> list[Segment]:
+        """
+        Return all segments in the (2*radius+1) × (2*radius+1) grid centred
+        on *seg*, clamped to the grid boundaries.
+
+        With the default radius=1 this gives up to 9 segments (3×3).
+        Corner / edge segments produce fewer neighbours.
+
+        The result is in row-major order.
+
+        Parameters
+        ----------
+        seg    : Segment – the centre segment.
+        radius : int     – neighbourhood half-size (default 1 → 3×3).
+        """
+        r_min = max(0, seg.row - radius)
+        r_max = min(self.rows    - 1, seg.row + radius)
+        c_min = max(0, seg.col - radius)
+        c_max = min(self.columns - 1, seg.col + radius)
+
+        return [
+            self._segments[r][c]
+            for r in range(r_min, r_max + 1)
+            for c in range(c_min, c_max + 1)
+        ]
 
     # ------------------------------------------------------------------
     def __repr__(self) -> str:

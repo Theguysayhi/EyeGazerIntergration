@@ -137,3 +137,50 @@ def capture_segment(segment) -> Image.Image:
         img = Image.frombytes("RGB", raw.size, bytes(raw.raw), "raw", "BGRX")
 
     return img
+
+
+def capture_segments_expanded(segments) -> Image.Image:
+    """
+    Capture the union bounding rectangle of a list of Segment objects in a
+    single screenshot call.
+
+    Intended for the 3×3 neighbourhood capture: pass the result of
+    ``SegmentMap.get_neighbours(seg)`` and the returned image covers all
+    those segments in one contiguous block.
+
+    Parameters
+    ----------
+    segments : list[Segment]
+        One or more Segment instances.  Duck-typing is fine – only
+        .left / .top / .right / .bottom are used.
+
+    Returns
+    -------
+    PIL.Image.Image
+        The captured expanded region as an RGB image.
+
+    Raises
+    ------
+    ValueError
+        If *segments* is empty.
+    """
+    if not segments:
+        raise ValueError("capture_segments_expanded requires at least one segment")
+
+    left   = min(s.left   for s in segments)
+    top    = min(s.top    for s in segments)
+    right  = max(s.right  for s in segments)
+    bottom = max(s.bottom for s in segments)
+
+    monitor = {
+        "left":   left,
+        "top":    top,
+        "width":  right  - left,
+        "height": bottom - top,
+    }
+
+    with mss.mss() as sct:
+        raw = sct.grab(monitor)
+        img = Image.frombytes("RGB", raw.size, bytes(raw.raw), "raw", "BGRX")
+
+    return img

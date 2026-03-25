@@ -1,5 +1,6 @@
 {
   "extraPaths": [
-    "beam_eye_tracker_sdk-2.1.0/python/package"
+    "beam_eye_tracker_sdk-2.1.0/python/package",
+    "core"
   ]
 }
