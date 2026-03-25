@@ -11,8 +11,8 @@ Behaviour
 ---------
 1.  The screen is divided into a configurable N×M grid (see config.ini).
 2.  The gaze point is mapped to whichever segment it falls in.
-3.  If the gaze dwells in one segment for `dwell_ms` ms the segment's
-    shell command (if any) fires  →  dwell_tracker.py
+3.  If the gaze dwells in one segment for `dwell_ms` ms a dwell event
+    is signalled  →  dwell_tracker.py
 4.  A background thread captures the focused segment every
     `capture_interval_s` seconds and queues it for NSFW analysis
     →  ai_capture_thread.py  /  nsfw_consumer.py
@@ -95,9 +95,6 @@ def main() -> None:
           f"Grid: {seg_map.columns}×{seg_map.rows}  "
           f"Dwell: {DWELL_MS}ms  Cooldown: {COOLDOWN_MS}ms")
     print(f"[main] NSFW model: {NSFW_MODEL}  labels: {NSFW_LABELS}")
-    for seg in seg_map.all_segments():
-        cmd_str = f"  → {seg.command}" if seg.command else "  (no command)"
-        print(f"        {seg.name}  {seg.rect}{cmd_str}")
     print("-" * 60)
 
     ai_queue: queue.Queue                   = queue.Queue(maxsize=1)

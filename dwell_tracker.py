@@ -1,12 +1,10 @@
 """
 dwell_tracker.py
-Tracks gaze dwell time per screen segment and fires the segment's
-configured shell command once the dwell threshold is reached.
+Tracks gaze dwell time per screen segment and signals dwell events.
 """
 
 from __future__ import annotations
 
-import subprocess
 import time
 
 from segment_map import Segment
@@ -14,8 +12,8 @@ from segment_map import Segment
 
 class DwellTracker:
     """
-    Tracks how long the gaze has been inside the same segment and fires the
-    segment's command once the dwell threshold is reached.
+    Tracks how long the gaze has been inside the same segment and signals
+    when the dwell threshold is reached.
 
     After firing, the segment enters a cooldown period during which it cannot
     fire again.
@@ -62,14 +60,7 @@ class DwellTracker:
         self._just_fired_seg  = segment
         fired = True
 
-        if segment.command:
-            print(f"[dwell] Firing command for {segment.name}: {segment.command}")
-            try:
-                subprocess.Popen(segment.command, shell=True)
-            except Exception as exc:
-                print(f"[dwell] Command error: {exc}")
-        else:
-            print(f"[dwell] Dwell confirmed on {segment.name} (no command configured)")
+        print(f"[dwell] Dwell confirmed on {segment.name}")
 
         return fired
 

@@ -40,8 +40,6 @@ class Segment:
     top:    int = 0
     right:  int = 0
     bottom: int = 0
-    # Shell command to run when this segment is dwelled on (empty = no command)
-    command: str = field(default="")
 
     # ------------------------------------------------------------------
     @property
@@ -81,7 +79,7 @@ class Segment:
     def __repr__(self) -> str:
         return (
             f"<Segment {self.name} rect=({self.left},{self.top})-"
-            f"({self.right},{self.bottom}) cmd={self.command!r}>"
+            f"({self.right},{self.bottom})>"
         )
 
 
@@ -127,14 +125,10 @@ class SegmentMap:
         col_edges = [sw * c // cols for c in range(cols + 1)]
         row_edges = [sh * r // rows for r in range(rows + 1)]
 
-        commands_section = _cfg["commands"] if _cfg.has_section("commands") else {}
-
         self._segments = []
         for r in range(rows):
             row_list: list[Segment] = []
             for c in range(cols):
-                key = f"segment_{r}_{c}"
-                cmd = commands_section.get(key, "").strip()
                 seg = Segment(
                     row=r,
                     col=c,
@@ -142,7 +136,6 @@ class SegmentMap:
                     top=row_edges[r],
                     right=col_edges[c + 1],
                     bottom=row_edges[r + 1],
-                    command=cmd,
                 )
                 row_list.append(seg)
             self._segments.append(row_list)
