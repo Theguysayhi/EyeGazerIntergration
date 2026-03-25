@@ -4,3 +4,11 @@
 
 mss
 Pillow
+ 
+# NSFW detection (AdamCodd/vit-base-nsfw-detector)
+# torch / torchvision: install the CPU build if you have no NVIDIA GPU:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# For CUDA (GPU) builds visit https://pytorch.org/get-started/locally/
+torch
+torchvision
+transformers
